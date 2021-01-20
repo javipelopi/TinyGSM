@@ -119,13 +119,13 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
    */
 
   /*TODO(?))
-  class GsmClientSecureSIM7000 : public GsmClientSim7000 
+  class GsmClientSecureSIM7000 : public GsmClientSim7000
   {
    public:
     GsmClientSecure() {}
 
     GsmClientSecure(TinyGsmSim7000& modem, uint8_t mux = 0)
-        : public GsmClient(modem, mux) 
+        : public GsmClient(modem, mux)
       {}
 
    public:
@@ -294,12 +294,11 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
   }
 
   String getLocalIPImpl() {
-    sendAT(GF("+CIFSR;E0"));
-    String res;
-    if (waitResponse(10000L, res) != 1) { return ""; }
-    res.replace(GSM_NL "OK" GSM_NL, "");
-    res.replace(GSM_NL, "");
-    res.trim();
+    sendAT(GF("+CNACT?"));
+    if (waitResponse(GF(GSM_NL "+CNACT:")) != 1) { return ""; }
+    streamSkipUntil('\"');
+    String res = stream.readStringUntil('\"');
+    waitResponse();
     return res;
   }
 
@@ -349,27 +348,18 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
 
     // TODO(?): wait AT+CGATT?
 
-    // Set to multi-IP
-    sendAT(GF("+CIPMUX=1"));
-    if (waitResponse() != 1) { return false; }
-
-    // Set to get data manually
-    sendAT(GF("+CIPRXGET=1"));
-    if (waitResponse() != 1) { return false; }
-
-    // Start Task and Set APN, USER NAME, PASSWORD
-    sendAT(GF("+CSTT=\""), apn, GF("\",\""), user, GF("\",\""), pwd, GF("\""));
+    // Open data connection
+    sendAT(GF("+CNACT=1,\""), apn, GF("\""));
     if (waitResponse(60000L) != 1) { return false; }
 
-    // Bring Up Wireless Connection with GPRS or CSD
-    sendAT(GF("+CIICR"));
-    if (waitResponse(60000L) != 1) { return false; }
+    // Check data connection
 
-    // Get Local IP Address, only assigned after connection
-    sendAT(GF("+CIFSR;E0"));
-    if (waitResponse(10000L) != 1) { return false; }
+    sendAT(GF("+CNACT?"));
+    if (waitResponse(GF(GSM_NL "+CNACT:")) != 1) { return false; }
+    int res = streamGetIntBefore(",");
+    waitResponse();
 
-    return true;
+    return res == 0;
   }
 
   bool gprsDisconnectImpl() {
@@ -545,7 +535,7 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     stream.write(reinterpret_cast<const uint8_t*>(buff), len);
     stream.flush();
     if (waitResponse(GF(GSM_NL "+CASEND:")) != 1) { return 0; }
-    streamSkipUntil(',');  // Skip mux
+    streamSkipUntil(',');                            // Skip mux
     if (streamGetIntBefore(',') != 0) { return 0; }  // If result != success
     return streamGetIntBefore('\n');
   }
