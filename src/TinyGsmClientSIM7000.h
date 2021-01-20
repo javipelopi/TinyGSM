@@ -99,7 +99,7 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
 
     void stop(uint32_t maxWaitMs) {
       dumpModemBuffer(maxWaitMs);
-      at->sendAT(GF("+CIPCLOSE="), mux);
+      at->sendAT(GF("+CACLOSE="), mux);
       sock_connected = false;
       at->waitResponse();
     }
@@ -374,8 +374,8 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
 
   bool gprsDisconnectImpl() {
     // Shut the TCP/IP connection
-    // CIPSHUT will close *all* open connections
-    sendAT(GF("+CIPSHUT"));
+    // CNACT will close *all* open connections
+    sendAT(GF("+CNACT=0"));
     if (waitResponse(60000L) != 1) { return false; }
 
     sendAT(GF("+CGATT=0"));  // Deactivate the bearer context
