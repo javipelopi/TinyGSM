@@ -119,16 +119,16 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
    */
 
   /*TODO(?))
-  class GsmClientSecureSIM7000 : public GsmClientSim7000
+  class GsmClientSecureSIM7000 : public GsmClientSim7000 
   {
-  public:
+   public:
     GsmClientSecure() {}
 
     GsmClientSecure(TinyGsmSim7000& modem, uint8_t mux = 0)
-     : public GsmClient(modem, mux)
-    {}
+        : public GsmClient(modem, mux) 
+      {}
 
-  public:
+   public:
     int connect(const char* host, uint16_t port, int timeout_s) override {
       stop();
       TINY_GSM_YIELD();
@@ -353,10 +353,6 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     sendAT(GF("+CIPMUX=1"));
     if (waitResponse() != 1) { return false; }
 
-    // Put in "quick send" mode (thus no extra "Send OK")
-    sendAT(GF("+CIPQSEND=1"));
-    if (waitResponse() != 1) { return false; }
-
     // Set to get data manually
     sendAT(GF("+CIPRXGET=1"));
     if (waitResponse() != 1) { return false; }
@@ -544,12 +540,13 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
   }
 
   int16_t modemSend(const void* buff, size_t len, uint8_t mux) {
-    sendAT(GF("+CIPSEND="), mux, ',', (uint16_t)len);
+    sendAT(GF("+CASEND="), mux, ',', (uint16_t)len);
     if (waitResponse(GF(">")) != 1) { return 0; }
     stream.write(reinterpret_cast<const uint8_t*>(buff), len);
     stream.flush();
-    if (waitResponse(GF(GSM_NL "DATA ACCEPT:")) != 1) { return 0; }
+    if (waitResponse(GF(GSM_NL "+CASEND:")) != 1) { return 0; }
     streamSkipUntil(',');  // Skip mux
+    if (streamGetIntBefore(',') != 0) { return 0; }  // If result != success
     return streamGetIntBefore('\n');
   }
 
