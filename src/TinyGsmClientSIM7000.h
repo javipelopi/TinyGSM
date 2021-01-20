@@ -118,7 +118,6 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
    * Inner Secure Client
    */
 
-  /*TODO(?))
   class GsmClientSecureSIM7000 : public GsmClientSim7000
   {
    public:
@@ -138,7 +137,6 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     }
     TINY_GSM_CLIENT_CONNECT_OVERRIDES
   };
-  */
 
   /*
    * Constructor
@@ -517,16 +515,20 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
  protected:
   bool modemConnect(const char* host, uint16_t port, uint8_t mux,
                     bool ssl = false, int timeout_s = 75) {
-    if (ssl) { DBG("SSL not yet supported on this module!"); }
+    sendAT(GF("+CACID="), mux);
+    waitResponse();
+
+    sendAT(GF("+CASSLCFG="), mux, ',', GF("ssl"), ssl);
+    waitResponse();
 
     uint32_t timeout_ms = ((uint32_t)timeout_s) * 1000;
-    sendAT(GF("+CIPSTART="), mux, ',', GF("\"TCP"), GF("\",\""), host,
-           GF("\","), port);
-    return (1 ==
-            waitResponse(timeout_ms, GF("CONNECT OK" GSM_NL),
-                         GF("CONNECT FAIL" GSM_NL),
-                         GF("ALREADY CONNECT" GSM_NL), GF("ERROR" GSM_NL),
-                         GF("CLOSE OK" GSM_NL)));
+    sendAT(GF("+CAOPEN="), mux, ',', GF("\"TCP"), GF("\",\""), host, GF("\","),
+           port);
+
+    if (waitResponse(GF(GSM_NL "+CAOPEN:")) != 1) { return 0; }
+    streamSkipUntil(',');  // Skip mux
+
+    return 0 == streamGetIntBefore('\n');
   }
 
   int16_t modemSend(const void* buff, size_t len, uint8_t mux) {
