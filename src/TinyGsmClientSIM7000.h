@@ -118,14 +118,12 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
    * Inner Secure Client
    */
 
-  class GsmClientSecureSIM7000 : public GsmClientSim7000
-  {
+  class GsmClientSecureSIM7000 : public GsmClientSim7000 {
    public:
-    GsmClientSecure() {}
+    GsmClientSecureSIM7000() {}
 
-    GsmClientSecure(TinyGsmSim7000& modem, uint8_t mux = 0)
-        : public GsmClient(modem, mux)
-      {}
+    GsmClientSecureSIM7000(TinyGsmSim7000& modem, uint8_t mux = 0)
+        : GsmClientSim7000(modem, mux) {}
 
    public:
     int connect(const char* host, uint16_t port, int timeout_s) override {
@@ -354,7 +352,7 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
 
     sendAT(GF("+CNACT?"));
     if (waitResponse(GF(GSM_NL "+CNACT:")) != 1) { return false; }
-    int res = streamGetIntBefore(",");
+    int res = streamGetIntBefore(',');
     waitResponse();
 
     return res == 0;
@@ -525,7 +523,7 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     sendAT(GF("+CAOPEN="), mux, ',', GF("\"TCP"), GF("\",\""), host, GF("\","),
            port);
 
-    if (waitResponse(GF(GSM_NL "+CAOPEN:")) != 1) { return 0; }
+    if (waitResponse(timeout_ms, GF(GSM_NL "+CAOPEN:")) != 1) { return 0; }
     streamSkipUntil(',');  // Skip mux
 
     return 0 == streamGetIntBefore('\n');
@@ -544,73 +542,45 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
 
   size_t modemRead(size_t size, uint8_t mux) {
     if (!sockets[mux]) return 0;
-#ifdef TINY_GSM_USE_HEX
-    sendAT(GF("+CIPRXGET=3,"), mux, ',', (uint16_t)size);
-    if (waitResponse(GF("+CIPRXGET:")) != 1) { return 0; }
-#else
-    sendAT(GF("+CIPRXGET=2,"), mux, ',', (uint16_t)size);
-    if (waitResponse(GF("+CIPRXGET:")) != 1) { return 0; }
-#endif
-    streamSkipUntil(',');  // Skip Rx mode 2/normal or 3/HEX
-    streamSkipUntil(',');  // Skip mux
-    int16_t len_requested = streamGetIntBefore(',');
-    //  ^^ Requested number of data bytes (1-1460 bytes)to be read
-    int16_t len_confirmed = streamGetIntBefore('\n');
-    // ^^ Confirmed number of data bytes to be read, which may be less than
-    // requested. 0 indicates that no data can be read.
-    // SRGD NOTE:  Contrary to above (which is copied from AT command manual)
-    // this is actually be the number of bytes that will be remaining in the
-    // buffer after the read.
-    for (int i = 0; i < len_requested; i++) {
+    sendAT(GF("+CARECV="), mux, ',', (uint16_t)size);
+    if (waitResponse(GF("+CARECV:")) != 1) { return 0; }
+    int16_t len_confirmed = streamGetIntBefore(',');
+    for (int i = 0; i < size; i++) {
       uint32_t startMillis = millis();
-#ifdef TINY_GSM_USE_HEX
-      while (stream.available() < 2 &&
-             (millis() - startMillis < sockets[mux]->_timeout)) {
-        TINY_GSM_YIELD();
-      }
-      char buf[4] = {
-          0,
-      };
-      buf[0] = stream.read();
-      buf[1] = stream.read();
-      char c = strtol(buf, NULL, 16);
-#else
       while (!stream.available() &&
              (millis() - startMillis < sockets[mux]->_timeout)) {
         TINY_GSM_YIELD();
       }
       char c = stream.read();
-#endif
       sockets[mux]->rx.put(c);
     }
     // DBG("### READ:", len_requested, "from", mux);
     // sockets[mux]->sock_available = modemGetAvailable(mux);
     sockets[mux]->sock_available = len_confirmed;
-    waitResponse();
-    return len_requested;
+    return size;
   }
 
   size_t modemGetAvailable(uint8_t mux) {
     if (!sockets[mux]) return 0;
-    sendAT(GF("+CIPRXGET=4,"), mux);
+    sendAT(GF("+CARECV="), mux, ",0");
     size_t result = 0;
-    if (waitResponse(GF("+CIPRXGET:")) == 1) {
-      streamSkipUntil(',');  // Skip mode 4
-      streamSkipUntil(',');  // Skip mux
-      result = streamGetIntBefore('\n');
-      waitResponse();
-    }
+    if (waitResponse(GF("+CARECV:")) != 1) { result = streamGetIntBefore(','); }
+    waitResponse();
+
     // DBG("### Available:", result, "on", mux);
     if (!result) { sockets[mux]->sock_connected = modemGetConnected(mux); }
     return result;
   }
 
   bool modemGetConnected(uint8_t mux) {
-    sendAT(GF("+CIPSTATUS="), mux);
-    waitResponse(GF("+CIPSTATUS"));
-    int8_t res = waitResponse(GF(",\"CONNECTED\""), GF(",\"CLOSED\""),
-                              GF(",\"CLOSING\""), GF(",\"REMOTE CLOSING\""),
-                              GF(",\"INITIAL\""));
+    sendAT(GF("+CASTATE?"));
+    // TODO we need to find the corresponding mux and check the connection state
+    int8_t readMux = -1;
+    while (readMux != mux) {
+      waitResponse(GF("+CASTATE:"));
+      readMux = streamGetIntBefore(',');
+    }
+    int8_t res = streamGetIntBefore('\n');
     waitResponse();
     return 1 == res;
   }
@@ -678,6 +648,13 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
           } else {
             data += mode;
           }
+        } else if (data.endsWith(GF(GSM_NL "+CARECV:"))) {
+          int8_t mux = streamGetIntBefore(',');
+          if (mux >= 0 && mux < TINY_GSM_MUX_COUNT && sockets[mux]) {
+            sockets[mux]->got_data = true;
+          }
+          data = "";
+          // DBG("### Got Data:", mux);
         } else if (data.endsWith(GF(GSM_NL "+RECEIVE:"))) {
           int8_t  mux = streamGetIntBefore(',');
           int16_t len = streamGetIntBefore('\n');
