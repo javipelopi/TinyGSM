@@ -265,6 +265,14 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     return res;
   }
 
+  String currentNetworkMode() {
+    sendAT("+CNMP?");
+    if (waitResponse(GF(GSM_NL "+CNMP:")) != 1) { return ""; }
+    String res = stream.readStringUntil('\n');
+    waitResponse();
+    return res;
+  }
+
   String setNetworkMode(uint8_t mode) {
     sendAT(GF("+CNMP="), mode);
     if (waitResponse(GF(GSM_NL "+CNMP:")) != 1) { return "OK"; }
@@ -275,6 +283,14 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
 
   String getPreferredModes() {
     sendAT(GF("+CMNB=?"));
+    if (waitResponse(GF(GSM_NL "+CMNB:")) != 1) { return ""; }
+    String res = stream.readStringUntil('\n');
+    waitResponse();
+    return res;
+  }
+
+  String currentPreferredMode() {
+    sendAT("+CMNB?");
     if (waitResponse(GF(GSM_NL "+CMNB:")) != 1) { return ""; }
     String res = stream.readStringUntil('\n');
     waitResponse();
@@ -368,6 +384,17 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     if (waitResponse(60000L) != 1) { return false; }
 
     return true;
+  }
+
+  bool isGprsConnectedImpl() {
+    // Check data connection
+
+    sendAT(GF("+CNACT?"));
+    if (waitResponse(GF(GSM_NL "+CNACT:")) != 1) { return false; }
+    int res = streamGetIntBefore(',');
+    waitResponse();
+
+    return res == 0;
   }
 
   /*
