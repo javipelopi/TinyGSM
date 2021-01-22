@@ -322,6 +322,10 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
                        const char* pwd = NULL) {
     gprsDisconnect();
 
+    // Open data connection
+    sendAT(GF("+CNACT=1,\""), apn, GF("\""));
+    if (waitResponse(60000L) != 1) { return false; }
+
     // Set the Bearer for the IP
     sendAT(GF(
         "+SAPBR=3,1,\"Contype\",\"GPRS\""));  // Set the connection type to GPRS
@@ -360,10 +364,6 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
 
     // TODO(?): wait AT+CGATT?
 
-    // Open data connection
-    sendAT(GF("+CNACT=1,\""), apn, GF("\""));
-    if (waitResponse(60000L) != 1) { return false; }
-
     // Check data connection
 
     sendAT(GF("+CNACT?"));
@@ -371,7 +371,7 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     int res = streamGetIntBefore(',');
     waitResponse();
 
-    return res == 0;
+    return res == 1;
   }
 
   bool gprsDisconnectImpl() {
@@ -384,17 +384,6 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     if (waitResponse(60000L) != 1) { return false; }
 
     return true;
-  }
-
-  bool isGprsConnectedImpl() {
-    // Check data connection
-
-    sendAT(GF("+CNACT?"));
-    if (waitResponse(GF(GSM_NL "+CNACT:")) != 1) { return false; }
-    int res = streamGetIntBefore(',');
-    waitResponse();
-
-    return res == 0;
   }
 
   /*
@@ -543,11 +532,11 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     sendAT(GF("+CACID="), mux);
     waitResponse();
 
-    sendAT(GF("+CASSLCFG="), mux, ',', GF("ssl"), ssl);
+    sendAT(GF("+CASSLCFG="), mux, ',', GF("ssl,"), ssl);
     waitResponse();
 
     uint32_t timeout_ms = ((uint32_t)timeout_s) * 1000;
-    sendAT(GF("+CAOPEN="), mux, ',', GF("\"TCP"), GF("\",\""), host, GF("\","),
+    sendAT(GF("+CAOPEN="), mux, ',', GF("\""), host, GF("\","),
            port);
 
     if (waitResponse(timeout_ms, GF(GSM_NL "+CAOPEN:")) != 1) { return 0; }
@@ -589,13 +578,15 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
 
   size_t modemGetAvailable(uint8_t mux) {
     if (!sockets[mux]) return 0;
+
+    sockets[mux]->sock_connected = modemGetConnected(mux);
+    if (!sockets[mux]->sock_connected) return 0;
+
     sendAT(GF("+CARECV="), mux, ",0");
     size_t result = 0;
     if (waitResponse(GF("+CARECV:")) != 1) { result = streamGetIntBefore(','); }
     waitResponse();
 
-    // DBG("### Available:", result, "on", mux);
-    if (!result) { sockets[mux]->sock_connected = modemGetConnected(mux); }
     return result;
   }
 
