@@ -536,8 +536,7 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     waitResponse();
 
     uint32_t timeout_ms = ((uint32_t)timeout_s) * 1000;
-    sendAT(GF("+CAOPEN="), mux, ',', GF("\""), host, GF("\","),
-           port);
+    sendAT(GF("+CAOPEN="), mux, ',', GF("\""), host, GF("\","), port);
 
     if (waitResponse(timeout_ms, GF(GSM_NL "+CAOPEN:")) != 1) { return 0; }
     streamSkipUntil(',');  // Skip mux
@@ -582,9 +581,16 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     sockets[mux]->sock_connected = modemGetConnected(mux);
     if (!sockets[mux]->sock_connected) return 0;
 
-    sendAT(GF("+CARECV="), mux, ",0");
-    size_t result = 0;
-    if (waitResponse(GF("+CARECV:")) != 1) { result = streamGetIntBefore(','); }
+    sendAT(GF("+CARECV?"));
+
+    // TODO we need to find the corresponding mux and check the connection state
+    int8_t readMux = -1;
+    while (readMux != mux) {
+      waitResponse(GF("+CARECV:"));
+      readMux = streamGetIntBefore(',');
+    }
+    
+    size_t result = streamGetIntBefore('\n');
     waitResponse();
 
     return result;
