@@ -532,7 +532,18 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     sendAT(GF("+CACID="), mux);
     waitResponse();
 
+    if (ssl) {
+      sendAT(GF("+CSSLCFG=\"sslversion\",0,3"));
+      waitResponse();
+
+      sendAT(GF("+CSSLCFG=\"ctxindex\",0"));
+      waitResponse();
+    }
+
     sendAT(GF("+CASSLCFG="), mux, ',', GF("ssl,"), ssl);
+    waitResponse();
+
+    sendAT(GF("+CASSLCFG="), mux, ',', GF("protocol,0"));
     waitResponse();
 
     uint32_t timeout_ms = ((uint32_t)timeout_s) * 1000;
@@ -541,7 +552,9 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     if (waitResponse(timeout_ms, GF(GSM_NL "+CAOPEN:")) != 1) { return 0; }
     streamSkipUntil(',');  // Skip mux
 
-    return 0 == streamGetIntBefore('\n');
+    int8_t res = streamGetIntBefore('\n');
+
+    return 0 == res;
   }
 
   int16_t modemSend(const void* buff, size_t len, uint8_t mux) {
@@ -577,7 +590,7 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
 
   size_t modemGetAvailable(uint8_t mux) {
     if (!sockets[mux]) return 0;
-
+    
     sockets[mux]->sock_connected = modemGetConnected(mux);
     if (!sockets[mux]->sock_connected) return 0;
 
@@ -589,7 +602,7 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
       waitResponse(GF("+CARECV:"));
       readMux = streamGetIntBefore(',');
     }
-    
+
     size_t result = streamGetIntBefore('\n');
     waitResponse();
 
