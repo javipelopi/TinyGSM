@@ -12,7 +12,7 @@
 // #define TINY_GSM_DEBUG Serial
 // #define TINY_GSM_USE_HEX
 
-#define TINY_GSM_MUX_COUNT 8
+#define TINY_GSM_MUX_COUNT 2
 #define TINY_GSM_BUFFER_READ_AND_CHECK_SIZE
 
 #include "TinyGsmBattery.tpp"
@@ -529,11 +529,13 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
  protected:
   bool modemConnect(const char* host, uint16_t port, uint8_t mux,
                     bool ssl = false, int timeout_s = 75) {
+    uint32_t timeout_ms = ((uint32_t)timeout_s) * 1000;
+
     sendAT(GF("+CACID="), mux);
-    waitResponse();
+    if (waitResponse(timeout_ms) != 1) return false;
 
     if (ssl) {
-      sendAT(GF("+CSSLCFG=\"sslversion\",0,3"));
+      sendAT(GF("+CSSLCFG=\"sslversion\",0,3"));  // TLS 1.2
       waitResponse();
 
       sendAT(GF("+CSSLCFG=\"ctxindex\",0"));
@@ -546,7 +548,6 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     sendAT(GF("+CASSLCFG="), mux, ',', GF("protocol,0"));
     waitResponse();
 
-    uint32_t timeout_ms = ((uint32_t)timeout_s) * 1000;
     sendAT(GF("+CAOPEN="), mux, ',', GF("\""), host, GF("\","), port);
 
     if (waitResponse(timeout_ms, GF(GSM_NL "+CAOPEN:")) != 1) { return 0; }
@@ -560,8 +561,10 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
   int16_t modemSend(const void* buff, size_t len, uint8_t mux) {
     sendAT(GF("+CASEND="), mux, ',', (uint16_t)len);
     if (waitResponse(GF(">")) != 1) { return 0; }
+
     stream.write(reinterpret_cast<const uint8_t*>(buff), len);
     stream.flush();
+
     if (waitResponse(GF(GSM_NL "+CASEND:")) != 1) { return 0; }
     streamSkipUntil(',');                            // Skip mux
     if (streamGetIntBefore(',') != 0) { return 0; }  // If result != success
@@ -570,9 +573,16 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
 
   size_t modemRead(size_t size, uint8_t mux) {
     if (!sockets[mux]) return 0;
+
     sendAT(GF("+CARECV="), mux, ',', (uint16_t)size);
-    if (waitResponse(GF("+CARECV:")) != 1) { return 0; }
+
+    if (waitResponse(GF("+CARECV:")) != 1) {
+      sockets[mux]->sock_available = 0;
+      return 0;
+    }
+
     int16_t len_confirmed = streamGetIntBefore(',');
+
     for (int i = 0; i < size; i++) {
       uint32_t startMillis = millis();
       while (!stream.available() &&
@@ -585,21 +595,25 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     // DBG("### READ:", len_requested, "from", mux);
     // sockets[mux]->sock_available = modemGetAvailable(mux);
     sockets[mux]->sock_available = len_confirmed;
-    return size;
+    return len_confirmed;
   }
 
   size_t modemGetAvailable(uint8_t mux) {
     if (!sockets[mux]) return 0;
-    
-    sockets[mux]->sock_connected = modemGetConnected(mux);
+
+    if (!sockets[mux]->sock_connected) {
+      sockets[mux]->sock_connected = modemGetConnected(mux);
+    }
     if (!sockets[mux]->sock_connected) return 0;
 
     sendAT(GF("+CARECV?"));
 
-    // TODO we need to find the corresponding mux and check the connection state
     int8_t readMux = -1;
     while (readMux != mux) {
-      waitResponse(GF("+CARECV:"));
+      if (waitResponse(GF("+CARECV:")) != 1) {
+        sockets[mux]->sock_connected = modemGetConnected(mux);
+        return 0;
+      };
       readMux = streamGetIntBefore(',');
     }
 
@@ -611,10 +625,9 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
 
   bool modemGetConnected(uint8_t mux) {
     sendAT(GF("+CASTATE?"));
-    // TODO we need to find the corresponding mux and check the connection state
     int8_t readMux = -1;
     while (readMux != mux) {
-      waitResponse(GF("+CASTATE:"));
+      if (waitResponse(GF("+CASTATE:")) != 1) return 0;
       readMux = streamGetIntBefore(',');
     }
     int8_t res = streamGetIntBefore('\n');
@@ -622,7 +635,7 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     return 1 == res;
   }
 
-  /*
+/*
    * Utilities
    */
  public:
