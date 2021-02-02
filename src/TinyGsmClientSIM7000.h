@@ -635,6 +635,30 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     return 1 == res;
   }
 
+ public:
+  bool modemGetConnected(const char* host, uint16_t port, uint8_t mux) {
+    sendAT(GF("+CAOPEN?"));
+    int8_t readMux = -1;
+    while (readMux != mux) {
+      if (waitResponse(GF("+CAOPEN:")) != 1) return 0;
+      readMux = streamGetIntBefore(',');
+    }
+    streamSkipUntil('\"');
+
+    size_t hostLen = strlen(host);
+
+    char buffer[hostLen];
+    stream.readBytesUntil('\"', buffer, hostLen);
+    streamSkipUntil(',');
+    uint16_t connectedPort = streamGetIntBefore('\n');
+    waitResponse();
+    bool samePort                = connectedPort == port;
+    bool sameHost                = memcmp(buffer, host, hostLen) == 0;
+    sockets[mux]->sock_connected = sameHost && samePort;
+
+    return sockets[mux]->sock_connected;
+  }
+
 /*
    * Utilities
    */
