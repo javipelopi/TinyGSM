@@ -581,6 +581,13 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
       return 0;
     }
 
+    stream.read();
+    if (stream.peek() == '0') {
+      waitResponse();
+      sockets[mux]->sock_available = 0;
+      return 0;
+    }
+
     int16_t len_confirmed = streamGetIntBefore(',');
 
     for (int i = 0; i < size; i++) {
@@ -659,7 +666,7 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     return sockets[mux]->sock_connected;
   }
 
-/*
+  /*
    * Utilities
    */
  public:
