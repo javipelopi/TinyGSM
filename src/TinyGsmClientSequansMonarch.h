@@ -283,7 +283,7 @@ class TinyGsmSequansMonarch
    * Power functions
    */
  protected:
-  bool restartImpl() {
+  bool restartImpl(const char* pin = NULL) {
     if (!testAT()) { return false; }
 
     sendAT(GF("+CFUN=0"));
@@ -295,7 +295,7 @@ class TinyGsmSequansMonarch
     res = waitResponse(20000L, GF("+SYSSTART"), GFP(GSM_ERROR));
     if (res != 1 && res != 3) { return false; }
     delay(1000);
-    return init();
+    return init(pin);
   }
 
   bool powerOffImpl() {
@@ -596,7 +596,7 @@ class TinyGsmSequansMonarch
       // SOCK_LISTENING              = 4,
       // SOCK_INCOMING               = 5,
       // SOCK_OPENING                = 6,
-      GsmClientSequansMonarch* sock = sockets[mux % TINY_GSM_MUX_COUNT];
+      GsmClientSequansMonarch* sock = sockets[muxNo % TINY_GSM_MUX_COUNT];
       if (sock) {
         sock->sock_connected = ((status != SOCK_CLOSED) &&
                                 (status != SOCK_INCOMING) &&

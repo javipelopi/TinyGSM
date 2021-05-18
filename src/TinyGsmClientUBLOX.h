@@ -193,7 +193,9 @@ class TinyGsmUBLOX : public TinyGsmModem<TinyGsmUBLOX>,
 
     // Enable automatic time zome update
     sendAT(GF("+CTZU=1"));
-    if (waitResponse(10000L) != 1) { return false; }
+    waitResponse(10000L);
+    // Ignore the response, in case the network doesn't support it.
+    // if (waitResponse(10000L) != 1) { return false; }
 
     SimStatus ret = getSimStatus();
     // if the sim isn't ready and a pin has been provided, try to unlock the sim
@@ -243,11 +245,11 @@ class TinyGsmUBLOX : public TinyGsmModem<TinyGsmUBLOX>,
    * Power functions
    */
  protected:
-  bool restartImpl() {
+  bool restartImpl(const char* pin = NULL) {
     if (!testAT()) { return false; }
     if (!setPhoneFunctionality(16)) { return false; }
     delay(3000);  // TODO(?):  Verify delay timing here
-    return init();
+    return init(pin);
   }
 
   bool powerOffImpl() {
