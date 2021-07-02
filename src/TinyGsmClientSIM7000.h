@@ -601,7 +601,12 @@ class TinyGsmSim7000 : public TinyGsmModem<TinyGsmSim7000>,
     }
     // DBG("### READ:", len_requested, "from", mux);
     // sockets[mux]->sock_available = modemGetAvailable(mux);
-    sockets[mux]->sock_available = len_confirmed;
+    if (len_confirmed < size) {
+      sockets[mux]->sock_available = sockets[mux]->sock_available - size;
+    } else {
+      sockets[mux]->sock_available = 0;
+    }
+    
     return len_confirmed;
   }
 
